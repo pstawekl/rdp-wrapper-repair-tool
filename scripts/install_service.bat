@@ -2,7 +2,7 @@
 echo Installing RDP Monitor Service...
 
 REM Install package in development mode
-python -m pip install -e ..
+python -m pip install -r ../requirements.txt
 
 REM Install and start the service
 sc create RDPMonitorService binPath= "%~dp0..\venv\Scripts\python.exe -m src.service.windows_service"
