@@ -10,31 +10,41 @@ import win32serviceutil
 
 from ..monitor.rdp_monitor import RDPMonitor
 from ..utils.config import Config
-from ..utils.github_client import GitHubClient
 from ..utils.file_handler import save_config_to_file
+from ..utils.github_client import GitHubClient
+
 
 class RDPMonitorService(win32serviceutil.ServiceFramework):
     _svc_name_ = "RDPMonitorService"
     _svc_display_name_ = "RDP Monitor Service"
     _svc_description_ = "Monitors RDP version changes and updates configuration"
     _svc_deps_ = ["TermService"]  # Zależność od usługi Remote Desktop
-    
+
     def __init__(self, args):
         win32serviceutil.ServiceFramework.__init__(self, args)
         self.stop_event = win32event.CreateEvent(None, 0, 0, None)
-        
+
         # Ustaw ścieżkę logów w katalogu ProgramData
-        log_dir = Path(os.environ.get('PROGRAMDATA')) / "RDP Monitor Service"
-        log_dir.mkdir(exist_ok=True)
-        log_file = log_dir / "rdp_monitor_service.log"
-        
+        log_dir = Path(os.environ.get('PROGRAMDATA', '')) / \
+            "RDP Monitor Service"
+        try:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_file = log_dir / "rdp_monitor_service.log"
+            if not log_file.exists():
+                log_file.touch(mode=0o644)
+        except PermissionError:
+            # Fallback to temp directory if ProgramData is not accessible
+            log_dir = Path(os.environ.get('TEMP', '')) / "RDP Monitor Service"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_file = log_dir / "rdp_monitor_service.log"
+
         # Konfiguracja logowania
         logging.basicConfig(
             filename=str(log_file),
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s'
         )
-        
+
         try:
             self.config = Config()
             self.rdp_monitor = RDPMonitor(self.config)
@@ -70,16 +80,20 @@ class RDPMonitorService(win32serviceutil.ServiceFramework):
         def on_rdp_version_change(new_version: str):
             try:
                 logging.info(f"RDP version change detected: {new_version}")
-                config_content = self.github_client.find_rdp_config(new_version)
+                config_content = self.github_client.find_rdp_config(
+                    new_version)
                 if config_content:
                     if save_config_to_file(self.config.rdp_ini_path, config_content, append=True):
-                        logging.info(f"Updated RDP configuration for version {new_version}")
+                        logging.info(
+                            f"Updated RDP configuration for version {new_version}")
                     else:
-                        logging.error("Failed to save configuration due to permission issues")
+                        logging.error(
+                            "Failed to save configuration due to permission issues")
             except Exception as e:
                 logging.error(f"Failed to update configuration: {e}")
 
         self.rdp_monitor.start_monitoring(on_rdp_version_change)
+
 
 # Kod do instalacji/usuwania usługi
 if __name__ == '__main__':
