@@ -1,1 +1,3 @@
 .venv/
+app_settings.json
+__pycache__/
